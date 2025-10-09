@@ -14,7 +14,179 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      confession_upvotes: {
+        Row: {
+          confession_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          confession_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          confession_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "confession_upvotes_confession_id_fkey"
+            columns: ["confession_id"]
+            isOneToOne: false
+            referencedRelation: "confessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      confessions: {
+        Row: {
+          author_id: string | null
+          content: string
+          created_at: string
+          id: string
+          is_anonymous: boolean
+          upvotes: number
+        }
+        Insert: {
+          author_id?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_anonymous?: boolean
+          upvotes?: number
+        }
+        Update: {
+          author_id?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_anonymous?: boolean
+          upvotes?: number
+        }
+        Relationships: []
+      }
+      events: {
+        Row: {
+          campus: string | null
+          created_at: string
+          description: string
+          event_date: string
+          id: string
+          location: string
+          organizer: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          campus?: string | null
+          created_at?: string
+          description: string
+          event_date: string
+          id?: string
+          location: string
+          organizer: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          campus?: string | null
+          created_at?: string
+          description?: string
+          event_date?: string
+          id?: string
+          location?: string
+          organizer?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      hustles: {
+        Row: {
+          category: string
+          contact_email: string | null
+          created_at: string
+          description: string
+          id: string
+          posted_by: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          category: string
+          contact_email?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          posted_by: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          contact_email?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          posted_by?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      profile_likes: {
+        Row: {
+          created_at: string
+          id: string
+          liked_id: string
+          liker_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          liked_id: string
+          liker_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          liked_id?: string
+          liker_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          bio: string | null
+          created_at: string
+          id: string
+          nickname: string | null
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          bio?: string | null
+          created_at?: string
+          id: string
+          nickname?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          bio?: string | null
+          created_at?: string
+          id?: string
+          nickname?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
