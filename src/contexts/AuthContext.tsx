@@ -1,4 +1,14 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase'; // Now this points to YOUR real Firebase
 
 export interface User {
   id: string;
@@ -13,7 +23,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, nickname?: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 
@@ -23,29 +33,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check localStorage for persisted user
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+  // Convert Firebase user to our User interface
+  const firebaseUserToAppUser = async (firebaseUser: FirebaseUser): Promise<User> => {
+    try {
+      // Get additional user data from Firestore
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      const userData = userDoc.data();
+      
+      return {
+        id: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        nickname: userData?.nickname || firebaseUser.displayName || undefined,
+        tags: userData?.tags || [],
+        createdAt: userData?.createdAt || new Date().toISOString(),
+      };
+    } catch (error) {
+      // If Firestore fails, return basic user info
+      return {
+        id: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        createdAt: new Date().toISOString(),
+      };
     }
-    setLoading(false);
+  };
+
+  useEffect(() => {
+    // Firebase Auth State Listener - REAL AUTH NOW!
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
+      try {
+        if (firebaseUser) {
+          console.log('User signed in:', firebaseUser.email);
+          const appUser = await firebaseUserToAppUser(firebaseUser);
+          setUser(appUser);
+        } else {
+          console.log('User signed out');
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return unsubscribe; // Cleanup listener
   }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      // Simulate Firebase Auth - in production, this would be Firebase
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        email,
-        createdAt: new Date().toISOString(),
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+      await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle the rest automatically
+    } catch (error: any) {
+      console.error('Login error:', error);
+      throw new Error(getAuthErrorMessage(error.code));
     } finally {
       setLoading(false);
     }
@@ -54,26 +97,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (email: string, password: string, nickname?: string) => {
     setLoading(true);
     try {
-      // Simulate Firebase Auth
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
+      // 1. Create REAL Firebase auth user
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      // 2. Update profile if nickname provided
+      if (nickname) {
+        await updateProfile(firebaseUser, {
+          displayName: nickname
+        });
+      }
+
+      // 3. Create user document in Firestore
+      const userData = {
         email,
-        nickname,
+        nickname: nickname || null,
+        tags: [],
         createdAt: new Date().toISOString(),
       };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+
+      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
+
+      console.log('User created successfully:', email);
+      // onAuthStateChanged will handle setting the user state
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      throw new Error(getAuthErrorMessage(error.code));
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      // onAuthStateChanged will handle setting user to null
+    } catch (error: any) {
+      console.error('Logout error:', error);
+      throw new Error('Failed to logout');
+    }
   };
 
   return (
@@ -96,4 +158,26 @@ export function useAuth() {
     throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
+}
+
+// Helper function for user-friendly error messages
+function getAuthErrorMessage(errorCode: string): string {
+  switch (errorCode) {
+    case 'auth/invalid-email':
+      return 'Invalid email address';
+    case 'auth/user-disabled':
+      return 'This account has been disabled';
+    case 'auth/user-not-found':
+      return 'No account found with this email';
+    case 'auth/wrong-password':
+      return 'Incorrect password';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection';
+    default:
+      return 'An unexpected error occurred';
+  }
 }
