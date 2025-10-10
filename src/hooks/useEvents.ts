@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNotification } from '@/contexts/NotificationContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Event {
   id: string;
@@ -62,13 +64,36 @@ export function useEvents(): UseEventsReturn {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const { success, error } = useNotification();
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchEvents = async () => {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setEvents(generateMockEvents());
-      setLoading(false);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('events')
+          .select('*')
+          .order('event_date', { ascending: true });
+
+        if (fetchError) throw fetchError;
+
+        const eventsData: Event[] = (data || []).map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          date: item.event_date,
+          location: item.location,
+          campus: item.campus || undefined,
+          organizer: item.organizer,
+          createdAt: item.created_at,
+        }));
+
+        setEvents(eventsData);
+      } catch (err) {
+        error('Failed to load events');
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchEvents();
@@ -76,12 +101,31 @@ export function useEvents(): UseEventsReturn {
 
   const addEvent = async (eventData: Omit<Event, 'id' | 'createdAt'>) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const { data, error: insertError } = await supabase
+        .from('events')
+        .insert({
+          title: eventData.title,
+          description: eventData.description,
+          event_date: eventData.date,
+          location: eventData.location,
+          campus: eventData.campus,
+          organizer: eventData.organizer,
+          user_id: user?.id,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
       const newEvent: Event = {
-        ...eventData,
-        id: `event-${Date.now()}`,
-        createdAt: new Date().toISOString(),
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        date: data.event_date,
+        location: data.location,
+        campus: data.campus || undefined,
+        organizer: data.organizer,
+        createdAt: data.created_at,
       };
 
       setEvents(prev => [newEvent, ...prev]);

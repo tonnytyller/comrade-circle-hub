@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNotification } from '@/contexts/NotificationContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ConnectProfile {
   id: string;
@@ -68,44 +70,80 @@ export function useConnectProfiles(): UseConnectProfilesReturn {
   const [loading, setLoading] = useState(true);
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
   const { success, info } = useNotification();
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchProfiles = async () => {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setProfiles(generateMockProfiles());
-      setLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .neq('id', user?.id || '');
+
+        if (error) throw error;
+
+        const profilesData: ConnectProfile[] = (data || []).map(item => ({
+          id: item.id,
+          nickname: item.nickname || 'Anonymous',
+          tags: item.tags || [],
+          bio: item.bio || '',
+          isLiked: false,
+          isMatched: false,
+        }));
+
+        setProfiles(profilesData);
+      } catch (err) {
+        console.error('Failed to load profiles');
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchProfiles();
-  }, []);
+    if (user) {
+      fetchProfiles();
+    }
+  }, [user]);
 
   const likeProfile = async (id: string) => {
-    try {
-      // Optimistic update
-      setProfiles(prev => prev.map(p => 
-        p.id === id ? { ...p, isLiked: true } : p
-      ));
+    if (!user) return;
 
-      // Simulate API call and potential match
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // 30% chance of instant match for demo
-      const isMatch = Math.random() > 0.7;
-      
-      if (isMatch) {
-        setProfiles(prev => prev.map(p => 
-          p.id === id ? { ...p, isMatched: true } : p
-        ));
-        success("🎉 It's a match! You can now connect with this comrade!");
+    // Optimistic update
+    setProfiles(prev =>
+      prev.map(p => (p.id === id ? { ...p, isLiked: true } : p))
+    );
+
+    try {
+      const { error: likeError } = await supabase
+        .from('profile_likes')
+        .insert({
+          liker_id: user.id,
+          liked_id: id,
+        });
+
+      if (likeError) throw likeError;
+
+      // Check for mutual like
+      const { data: mutualLike } = await supabase
+        .from('profile_likes')
+        .select('*')
+        .eq('liker_id', id)
+        .eq('liked_id', user.id)
+        .maybeSingle();
+
+      if (mutualLike) {
+        setProfiles(prev =>
+          prev.map(p => (p.id === id ? { ...p, isMatched: true } : p))
+        );
+        success('🎉 It\'s a match! You can now connect with this comrade!');
       } else {
         info('Like sent! If they like you back, you\'ll get a match notification.');
       }
     } catch (err) {
-      // Rollback on error
-      setProfiles(prev => prev.map(p => 
-        p.id === id ? { ...p, isLiked: false } : p
-      ));
+      // Rollback
+      setProfiles(prev =>
+        prev.map(p => (p.id === id ? { ...p, isLiked: false } : p))
+      );
     }
   };
 

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNotification } from '@/contexts/NotificationContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Hustle {
   id: string;
@@ -64,13 +66,35 @@ export function useHustles(): UseHustlesReturn {
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const { success, error } = useNotification();
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchHustles = async () => {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setHustles(generateMockHustles());
-      setLoading(false);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('hustles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (fetchError) throw fetchError;
+
+        const hustlesData: Hustle[] = (data || []).map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          category: item.category as Hustle['category'],
+          postedBy: item.posted_by,
+          contactEmail: item.contact_email || undefined,
+          createdAt: item.created_at,
+        }));
+
+        setHustles(hustlesData);
+      } catch (err) {
+        error('Failed to load hustles');
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchHustles();
@@ -78,12 +102,29 @@ export function useHustles(): UseHustlesReturn {
 
   const addHustle = async (hustleData: Omit<Hustle, 'id' | 'createdAt'>) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const { data, error: insertError } = await supabase
+        .from('hustles')
+        .insert({
+          title: hustleData.title,
+          description: hustleData.description,
+          category: hustleData.category,
+          posted_by: hustleData.postedBy,
+          contact_email: hustleData.contactEmail,
+          user_id: user?.id,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
       const newHustle: Hustle = {
-        ...hustleData,
-        id: `hustle-${Date.now()}`,
-        createdAt: new Date().toISOString(),
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        category: data.category as Hustle['category'],
+        postedBy: data.posted_by,
+        contactEmail: data.contact_email || undefined,
+        createdAt: data.created_at,
       };
 
       setHustles(prev => [newHustle, ...prev]);

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNotification } from '@/contexts/NotificationContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Confession {
   id: string;
@@ -48,15 +50,35 @@ export function useConfessions(): UseConfessionsReturn {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'trending' | 'newest'>('trending');
   const { success, error } = useNotification();
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Simulate fetching confessions
     const fetchConfessions = async () => {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      const mockData = generateMockConfessions();
-      setConfessions(mockData);
-      setLoading(false);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('confessions')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (fetchError) throw fetchError;
+
+        const confessionsData: Confession[] = (data || []).map(item => ({
+          id: item.id,
+          content: item.content,
+          author: item.is_anonymous ? 'Anonymous' : 'User',
+          isAnonymous: item.is_anonymous,
+          upvotes: item.upvotes,
+          hasUpvoted: false,
+          createdAt: item.created_at,
+        }));
+
+        setConfessions(confessionsData);
+      } catch (err) {
+        error('Failed to load confessions');
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchConfessions();
@@ -77,16 +99,26 @@ export function useConfessions(): UseConfessionsReturn {
 
   const addConfession = async (content: string, isAnonymous: boolean) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const { data, error: insertError } = await supabase
+        .from('confessions')
+        .insert({
+          content,
+          is_anonymous: isAnonymous,
+          author_id: user?.id,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
       const newConfession: Confession = {
-        id: `confession-${Date.now()}`,
-        content,
-        isAnonymous,
-        author: isAnonymous ? undefined : `You`,
-        upvotes: 0,
+        id: data.id,
+        content: data.content,
+        author: data.is_anonymous ? 'Anonymous' : 'You',
+        isAnonymous: data.is_anonymous,
+        upvotes: data.upvotes,
         hasUpvoted: false,
-        createdAt: new Date().toISOString(),
+        createdAt: data.created_at,
       };
 
       setConfessions(prev => [newConfession, ...prev]);
@@ -98,29 +130,65 @@ export function useConfessions(): UseConfessionsReturn {
   };
 
   const toggleUpvote = async (id: string) => {
-    try {
-      // Optimistic update
-      setConfessions(prev => prev.map(c => {
-        if (c.id === id) {
-          return {
-            ...c,
-            upvotes: c.hasUpvoted ? c.upvotes - 1 : c.upvotes + 1,
-            hasUpvoted: !c.hasUpvoted,
-          };
-        }
-        return c;
-      }));
+    if (!user) {
+      error('Please login to upvote');
+      return;
+    }
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 300));
+    const confession = confessions.find(c => c.id === id);
+    if (!confession) return;
+
+    const isUpvoting = !confession.hasUpvoted;
+
+    // Optimistic update
+    setConfessions(prev => prev.map(c => {
+      if (c.id === id) {
+        return {
+          ...c,
+          upvotes: isUpvoting ? c.upvotes + 1 : c.upvotes - 1,
+          hasUpvoted: isUpvoting,
+        };
+      }
+      return c;
+    }));
+
+    try {
+      if (isUpvoting) {
+        const { error: upvoteError } = await supabase
+          .from('confession_upvotes')
+          .insert({
+            confession_id: id,
+            user_id: user.id,
+          });
+
+        if (upvoteError) throw upvoteError;
+
+        await supabase
+          .from('confessions')
+          .update({ upvotes: confession.upvotes + 1 })
+          .eq('id', id);
+      } else {
+        const { error: removeError } = await supabase
+          .from('confession_upvotes')
+          .delete()
+          .eq('confession_id', id)
+          .eq('user_id', user.id);
+
+        if (removeError) throw removeError;
+
+        await supabase
+          .from('confessions')
+          .update({ upvotes: confession.upvotes - 1 })
+          .eq('id', id);
+      }
     } catch (err) {
       // Rollback on error
       setConfessions(prev => prev.map(c => {
         if (c.id === id) {
           return {
             ...c,
-            upvotes: c.hasUpvoted ? c.upvotes + 1 : c.upvotes - 1,
-            hasUpvoted: !c.hasUpvoted,
+            upvotes: isUpvoting ? c.upvotes - 1 : c.upvotes + 1,
+            hasUpvoted: !isUpvoting,
           };
         }
         return c;

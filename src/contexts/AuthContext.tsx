@@ -1,14 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { 
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  updateProfile,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase'; // Now this points to YOUR real Firebase
+import { supabase } from '@/integrations/supabase/client';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 export interface User {
   id: string;
@@ -33,62 +25,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Convert Firebase user to our User interface
-  const firebaseUserToAppUser = async (firebaseUser: FirebaseUser): Promise<User> => {
+  // Convert Supabase user to our User interface
+  const supabaseUserToAppUser = async (supabaseUser: SupabaseUser): Promise<User> => {
     try {
-      // Get additional user data from Firestore
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      const userData = userDoc.data();
+      // Get additional user data from profiles table
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', supabaseUser.id)
+        .single();
       
       return {
-        id: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        nickname: userData?.nickname || firebaseUser.displayName || undefined,
-        tags: userData?.tags || [],
-        createdAt: userData?.createdAt || new Date().toISOString(),
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        nickname: profile?.nickname || undefined,
+        tags: profile?.tags || [],
+        createdAt: profile?.created_at || new Date().toISOString(),
       };
     } catch (error) {
-      // If Firestore fails, return basic user info
+      // If profile fetch fails, return basic user info
       return {
-        id: firebaseUser.uid,
-        email: firebaseUser.email || '',
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
         createdAt: new Date().toISOString(),
       };
     }
   };
 
   useEffect(() => {
-    // Firebase Auth State Listener - REAL AUTH NOW!
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
-      try {
-        if (firebaseUser) {
-          console.log('User signed in:', firebaseUser.email);
-          const appUser = await firebaseUserToAppUser(firebaseUser);
-          setUser(appUser);
-        } else {
-          console.log('User signed out');
-          setUser(null);
-        }
-      } catch (error) {
-        console.error('Error in auth state change:', error);
-        setUser(null);
-      } finally {
-        setLoading(false);
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        supabaseUserToAppUser(session.user).then(setUser);
       }
+      setLoading(false);
     });
 
-    return unsubscribe; // Cleanup listener
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const appUser = await supabaseUserToAppUser(session.user);
+        setUser(appUser);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle the rest automatically
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Login error:', error);
-      throw new Error(getAuthErrorMessage(error.code));
+      throw new Error(getAuthErrorMessage(error.message));
     } finally {
       setLoading(false);
     }
@@ -97,32 +94,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (email: string, password: string, nickname?: string) => {
     setLoading(true);
     try {
-      // 1. Create REAL Firebase auth user
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-
-      // 2. Update profile if nickname provided
-      if (nickname) {
-        await updateProfile(firebaseUser, {
-          displayName: nickname
-        });
-      }
-
-      // 3. Create user document in Firestore
-      const userData = {
+      const { error } = await supabase.auth.signUp({
         email,
-        nickname: nickname || null,
-        tags: [],
-        createdAt: new Date().toISOString(),
-      };
-
-      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
-
-      console.log('User created successfully:', email);
-      // onAuthStateChanged will handle setting the user state
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            nickname: nickname || null,
+          }
+        }
+      });
+      
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Signup error:', error);
-      throw new Error(getAuthErrorMessage(error.code));
+      throw new Error(getAuthErrorMessage(error.message));
     } finally {
       setLoading(false);
     }
@@ -130,10 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await signOut(auth);
-      // onAuthStateChanged will handle setting user to null
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Logout error:', error);
       throw new Error('Failed to logout');
     }
   };
@@ -161,23 +145,18 @@ export function useAuth() {
 }
 
 // Helper function for user-friendly error messages
-function getAuthErrorMessage(errorCode: string): string {
-  switch (errorCode) {
-    case 'auth/invalid-email':
-      return 'Invalid email address';
-    case 'auth/user-disabled':
-      return 'This account has been disabled';
-    case 'auth/user-not-found':
-      return 'No account found with this email';
-    case 'auth/wrong-password':
-      return 'Incorrect password';
-    case 'auth/email-already-in-use':
-      return 'An account with this email already exists';
-    case 'auth/weak-password':
-      return 'Password should be at least 6 characters';
-    case 'auth/network-request-failed':
-      return 'Network error. Please check your connection';
-    default:
-      return 'An unexpected error occurred';
+function getAuthErrorMessage(errorMessage: string): string {
+  if (errorMessage.includes('Invalid login credentials')) {
+    return 'Invalid email or password';
   }
+  if (errorMessage.includes('Email not confirmed')) {
+    return 'Please confirm your email address';
+  }
+  if (errorMessage.includes('User already registered')) {
+    return 'An account with this email already exists';
+  }
+  if (errorMessage.includes('Password should be at least')) {
+    return 'Password should be at least 6 characters';
+  }
+  return 'An unexpected error occurred';
 }
