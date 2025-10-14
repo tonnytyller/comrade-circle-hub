@@ -15,7 +15,7 @@ export interface ConnectProfile {
 interface UseConnectProfilesReturn {
   profiles: ConnectProfile[];
   loading: boolean;
-  likeProfile: (id: string) => Promise<void>;
+  likeProfile: (id: string) => Promise<boolean>;
   currentProfileIndex: number;
   nextProfile: () => void;
 }
@@ -105,8 +105,8 @@ export function useConnectProfiles(): UseConnectProfilesReturn {
     }
   }, [user]);
 
-  const likeProfile = async (id: string) => {
-    if (!user) return;
+  const likeProfile = async (id: string): Promise<boolean> => {
+    if (!user) return false;
 
     // Optimistic update
     setProfiles(prev =>
@@ -135,15 +135,27 @@ export function useConnectProfiles(): UseConnectProfilesReturn {
         setProfiles(prev =>
           prev.map(p => (p.id === id ? { ...p, isMatched: true } : p))
         );
+        
+        // Create conversation automatically
+        await supabase
+          .from('conversations')
+          .insert({
+            user1_id: user.id,
+            user2_id: id,
+          });
+        
         success('🎉 It\'s a match! You can now connect with this comrade!');
+        return true;
       } else {
         info('Like sent! If they like you back, you\'ll get a match notification.');
+        return false;
       }
     } catch (err) {
       // Rollback
       setProfiles(prev =>
         prev.map(p => (p.id === id ? { ...p, isLiked: false } : p))
       );
+      return false;
     }
   };
 

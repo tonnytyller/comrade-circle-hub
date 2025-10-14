@@ -46,8 +46,8 @@ export default function Auth() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signupData.email || !signupData.password) {
-      showError('Please fill in all required fields');
+    if (!signupData.email || !signupData.password || !signupData.nickname) {
+      showError('Please fill in all required fields including username');
       return;
     }
 
@@ -56,13 +56,22 @@ export default function Auth() {
       return;
     }
 
+    if (signupData.nickname.length < 3) {
+      showError('Username must be at least 3 characters');
+      return;
+    }
+
     setSubmitting(true);
     try {
       await signup(signupData.email, signupData.password, signupData.nickname);
       success('Welcome to Comrade Circle!');
       navigate('/');
-    } catch (err) {
-      showError('Signup failed. Email might already be in use.');
+    } catch (err: any) {
+      if (err.message?.includes('duplicate') || err.message?.includes('unique')) {
+        showError('This username is already taken. Please choose another.');
+      } else {
+        showError('Signup failed. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -160,7 +169,7 @@ export default function Auth() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="signup-nickname">Nickname (optional)</Label>
+                    <Label htmlFor="signup-nickname">Username *</Label>
                     <Input
                       id="signup-nickname"
                       type="text"
@@ -168,7 +177,12 @@ export default function Auth() {
                       value={signupData.nickname}
                       onChange={(e) => setSignupData({ ...signupData, nickname: e.target.value })}
                       maxLength={30}
+                      required
+                      minLength={3}
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Must be unique and at least 3 characters
+                    </p>
                   </div>
                   <div>
                     <Label htmlFor="signup-password">Password</Label>

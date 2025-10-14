@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Camera, X, ChevronLeft, ChevronRight, Loader2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStories } from '@/hooks/useStories';
 import { useNotification } from '@/contexts/NotificationContext';
+import ChatWindow from '@/components/Chat/ChatWindow';
 
 export default function Stories() {
   const { isAuthenticated, user } = useAuth();
@@ -16,6 +17,7 @@ export default function Stories() {
   const [uploading, setUploading] = useState(false);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [viewingStory, setViewingStory] = useState(false);
+  const [chatWith, setChatWith] = useState<{ id: string; nickname: string } | null>(null);
 
   if (!isAuthenticated) {
     return (
@@ -235,21 +237,45 @@ export default function Stories() {
                       {new Date(currentStory.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  {currentStory.userId === user?.id && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteStory(currentStory.id)}
-                    >
-                      Delete
-                    </Button>
-                  )}
+                  <div className="flex gap-2">
+                    {currentStory.userId !== user?.id && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setChatWith({ 
+                          id: currentStory.userId, 
+                          nickname: currentStory.userNickname 
+                        })}
+                      >
+                        <MessageCircle className="h-4 w-4 mr-2" />
+                        Chat
+                      </Button>
+                    )}
+                    {currentStory.userId === user?.id && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteStory(currentStory.id)}
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Chat Window */}
+      {chatWith && (
+        <ChatWindow
+          otherUserId={chatWith.id}
+          otherUserNickname={chatWith.nickname}
+          onClose={() => setChatWith(null)}
+        />
+      )}
     </div>
   );
 }
