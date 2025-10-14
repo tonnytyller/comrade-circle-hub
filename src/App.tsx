@@ -14,6 +14,7 @@ import Confessions from "./pages/Confessions";
 import Hustles from "./pages/Hustles";
 import Events from "./pages/Events";
 import Connect from "./pages/Connect";
+import Stories from "./pages/Stories";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -36,6 +37,7 @@ const App = () => (
                     <Route path="/confessions" element={<Confessions />} />
                     <Route path="/hustles" element={<Hustles />} />
                     <Route path="/events" element={<Events />} />
+                    <Route path="/stories" element={<Stories />} />
                     <Route 
                       path="/connect" 
                       element={

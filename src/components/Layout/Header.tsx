@@ -17,6 +17,7 @@ export function Header() {
     { path: '/confessions', label: 'Confessions' },
     { path: '/hustles', label: 'Hustle Board' },
     { path: '/events', label: 'Events' },
+    { path: '/stories', label: 'Stories' },
     { path: '/connect', label: 'Connect' },
   ];
 

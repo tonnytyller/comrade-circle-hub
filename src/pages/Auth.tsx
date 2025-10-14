@@ -194,12 +194,11 @@ export default function Auth() {
           </TabsContent>
         </Tabs>
 
-        {/* Demo Note */}
+        {/* Info Note */}
         <Card className="mt-4 bg-muted/50">
           <CardContent className="p-4 text-center text-sm text-muted-foreground">
             <p>
-              <strong>Demo Mode:</strong> Use any email/password to try the app.
-              Data is stored locally and will reset on page refresh.
+              Create an account to get started or login with your existing credentials.
             </p>
           </CardContent>
         </Card>
