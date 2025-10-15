@@ -7,11 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSpotifyAuth } from '@/contexts/SpotifyAuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
 
 export default function Auth() {
   const navigate = useNavigate();
   const { login, signup, isAuthenticated, loading } = useAuth();
+  const { signInWithSpotify, user: spotifyUser } = useSpotifyAuth();
   const { success, error: showError } = useNotification();
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
 
@@ -20,10 +22,10 @@ export default function Auth() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated || spotifyUser) {
       navigate('/');
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, spotifyUser, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +117,29 @@ export default function Auth() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <Button 
+                  onClick={async () => {
+                    try {
+                      await signInWithSpotify();
+                    } catch (err) {
+                      showError('Failed to sign in with Spotify');
+                    }
+                  }}
+                  variant="gradient"
+                  className="w-full mb-4"
+                >
+                  Continue with Spotify
+                </Button>
+                
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with email</span>
+                  </div>
+                </div>
+
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
                     <Label htmlFor="login-email">Email</Label>
@@ -156,6 +181,29 @@ export default function Auth() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <Button 
+                  onClick={async () => {
+                    try {
+                      await signInWithSpotify();
+                    } catch (err) {
+                      showError('Failed to sign in with Spotify');
+                    }
+                  }}
+                  variant="gradient"
+                  className="w-full mb-4"
+                >
+                  Continue with Spotify
+                </Button>
+                
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with email</span>
+                  </div>
+                </div>
+
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div>
                     <Label htmlFor="signup-email">Email</Label>
